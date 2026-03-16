@@ -5,6 +5,6 @@ gitlab_repository_installation_script_url: "https://packages.gitlab.com/install/
 gitlab_dependencies:
   - openssh-server
   - postfix
-  - curl-minimal
+  #- curl-minimal
   - openssl
   - tzdata

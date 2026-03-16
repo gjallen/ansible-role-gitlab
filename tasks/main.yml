@@ -3,11 +3,11 @@
   include_vars: "{{ ansible_os_family }}.yml"
 
 - name: Check if GitLab configuration file already exists.
-  stat: path=/etc/gitlab/gitlab.rb
+  stat: path=/etc/gitlab/gitlab.rb  # 'status' i.e. path on the target host
   register: gitlab_config_file
 
 - name: Check if GitLab is already installed.
-  stat: path=/usr/bin/gitlab-ctl
+  stat: path=/usr/bin/gitlab-ctl  
   register: gitlab_file
 
 # Install GitLab and its dependencies.
@@ -15,6 +15,7 @@
   package:
     name: "{{ gitlab_dependencies }}"
     state: present
+  when: ansible_os_family == "RedHat"
 
 - name: Install GitLab dependencies (Debian).
   apt:
@@ -26,7 +27,7 @@
   get_url:
     url: "{{ gitlab_repository_installation_script_url }}"
     dest: /tmp/gitlab_install_repository.sh
-    validate_certs: "{{ gitlab_download_validate_certs }}"
+    validate_certs: "{{ gitlab_download_validate_certs }}" # checks validity of the SSL cert
   when: not gitlab_file.stat.exists
 
 - name: Install GitLab repository.
@@ -37,23 +38,33 @@
 - name: Define the Gitlab package name.
   set_fact:
     gitlab_package_name: "{{ gitlab_edition }}{{ gitlab_package_version_separator }}{{ gitlab_version }}"
-  when: gitlab_version | default(false)
+  when: gitlab_version | default(false) # if no value has been define, 'when: false' will skip this play.
 
 - name: Install GitLab
   package:
     name: "{{ gitlab_package_name | default(gitlab_edition) }}"
     state: present
-  async: 300
-  poll: 5
+  async: 600
+  poll: 10
   when: not gitlab_file.stat.exists
 
 # Start and configure GitLab. Sometimes the first run fails, but after that,
 # restarts fix problems, so ignore failures on this run.
+
+# The 'creates=/var/opt/gitlab/bootstrapped' is the idempotency mechanism
+# for the command module. It effectively says 'only run the command if
+# this file does NOT exist'
+# Without this, gitlab-ctl reconfigure would run every time you ran the 
+# playbook which is slow and unnecessary.
 - name: Reconfigure GitLab (first run).
   command: >
     gitlab-ctl reconfigure
     creates=/var/opt/gitlab/bootstrapped
   failed_when: false
+# This tells Ansible to never mark this task as failed, regardless of the exit code. 
+# Normally Ansible fails a command task if it returns a non-zero exit code.
+# This is here because 'gitlab-ctl reconfigure' can return non-zero exit codes even 
+# when it has actually succeeded — it's a bit unreliable in that regard.
 
 - name: Create GitLab SSL configuration folder.
   file:
